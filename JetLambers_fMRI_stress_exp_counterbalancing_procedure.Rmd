@@ -1,0 +1,75 @@
+---
+title: "Randomization_trials_Maran_etal"
+author: "Jet Lambers, input from Matteo Maran"
+date: "2026-03-12"
+output: html_document
+---
+# Load libraries
+
+```{r loading libraries}
+library(tidyverse)
+library(broom)
+```
+
+# Initialize dataframe
+```{r reading stimulus dataframe}
+# Load dataframe
+stim_df <- read.csv("C:/Users/Jet/OneDrive/Documenten/Universiteit/SPEAC SA/full_stim_excel_exp.csv", header = T, sep = ";") 
+stim_df <- stim_df %>% filter(distractor == 0)
+
+# Convert frequency into numerical 
+stim_df$freq_sum <- gsub(",", ".", stim_df$freq_sum)
+stim_df$freq_sum <- as.numeric(stim_df$freq_sum)
+
+# Intialize factors
+stim_df$Stim_code <- as.factor(stim_df$Stim_code)
+stim_df$distractor <- factor(stim_df$distractor, levels = c("0", "1"))
+stim_df$stress <- factor(stim_df$condition, levels = c("1", "2", "3", "4"))
+
+str(stim_df)
+```
+# Create random lists
+
+```{r}
+# Create index lists
+list1 <- rep(c("A", "B", "C", "D", "E", "E", "D", "C", "B", "A"), 5)
+list2 <- rep(c("B", "C", "D", "E", "A", "A", "E", "D", "C", "B"), 5)
+list3 <- rep(c("C", "D", "E", "A", "B", "B", "A", "E", "D", "C"), 5)
+list4 <- rep(c("D", "E", "A", "B", "C", "C", "B", "A", "E", "D"), 5)
+
+stim_df$list_idx <- c(list1, list2, list3, list4)
+
+# Create packs
+packA <- filter(stim_df, list_idx == "A")
+packB <- filter(stim_df, list_idx == "B")
+packC <- filter(stim_df, list_idx == "C")
+packD <- filter(stim_df, list_idx == "D")
+packE <- filter(stim_df, list_idx == "E")
+
+
+# Assign packs to conditions
+library(car)
+stim_df$random1 <- dplyr::recode(stim_df$list_idx, "A" = "E1", "B" = "E2", "C" = "E3", "D" = "E4", "E" = "G")
+stim_df$random2 <- dplyr::recode(stim_df$list_idx, "A" = "E2", "B" = "E3", "C" = "E4", "D" = "G", "E" = "E1")
+stim_df$random3 <- dplyr::recode(stim_df$list_idx, "A" = "E3", "B" = "E4", "C" = "G", "D" = "E1", "E" = "E2")
+stim_df$random4 <- dplyr::recode(stim_df$list_idx, "A" = "E4", "B" = "G", "C" = "E1", "D" = "E2", "E" = "E3")
+stim_df$random5 <- dplyr::recode(stim_df$list_idx, "A" = "G", "B" = "E1", "C" = "E2", "D" = "E3", "E" = "E4")
+
+```
+
+# Check mean sum frequency
+```{r}
+# check total frequency packs
+mean(packA$freq_sum)
+mean(packB$freq_sum)
+mean(packC$freq_sum)
+mean(packD$freq_sum)
+mean(packE$freq_sum)
+```
+
+# Save the stim_df
+```{r}
+write.csv(file = "C:/Users/Jet/OneDrive/Documenten/Universiteit/SPEAC SA/randmized_stim_excel_exp.csv", stim_df, row.names = F)
+```
+
+

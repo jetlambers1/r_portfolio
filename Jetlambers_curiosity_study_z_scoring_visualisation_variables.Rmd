@@ -1,0 +1,163 @@
+---
+title: "Curiosity_exp_prep"
+author: "Jet Lambers"
+date: "2026-09-21"
+output: html_document
+---
+
+# Load libraries
+```{r}
+library(tidyverse)
+library(car)
+library(lattice)
+library(dplyr)
+```
+
+# Load and initialize dataset
+```{r}
+school_data <- read.csv("C:/Users/Jet/OneDrive/Documenten/Universiteit/Motivation SA/Gegevens_scholen_anoniem(Anonieme_gegevens_scholen).csv")
+schoolweging_data <- read.csv("C:/Users/Jet/OneDrive/Documenten/Universiteit/Motivation SA/schoolweging_csv.csv", fileEncoding = "UTF-8")
+
+school_data <- school_data %>%
+  mutate(
+    Provincie = as.character(Provincie),
+    Schoolweging = as.numeric(Schoolweging),
+    stedelijkheid = as.numeric(stedelijkheid),
+    gemiddelde_SES = as.numeric(gemiddelde_SES),
+    Schoolweging_z = scale(Schoolweging, center = T, scale = T),
+    stedelijkheid_z = scale(stedelijkheid, center = T, scale = T),
+    SES_z = scale(gemiddelde_SES, center = T, scale = T))
+
+
+schoolweging_data$schoolweging_z <- scale(schoolweging_data$schoolweging)
+```
+
+# Make graphs
+
+```{r}
+library(gtsummary)
+
+tabl1 <- school_data |> tbl_summary(
+  include = c(Provincie, Schoolweging, stedelijkheid, gemiddelde_SES),
+  statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} / {N} ({p}%)"
+    ),
+    digits = all_continuous() ~ 2,
+    missing_text = "(Missing)")
+                                  
+tabl1 |>
+  as_gt() |>
+  gt::gtsave(filename = "table.docx")
+```
+
+
+# Create sample and reference schoolweging histograms
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(wesanderson)
+
+# Create universal labels for all graphs
+size_title = 15
+size_title_axis = 18
+size_text_axis = 15
+color_text = "black"
+
+# Schoolweging sample
+Schoolweging_hist <- ggplot(school_data, aes(x = Schoolweging)) + 
+  geom_histogram(binwidth = 1, colour = "white", fill = wes_palette("Zissou1", 1)) + 
+  xlab("Norm scored mean schoolweging") + ylab("Count") +
+  ggtitle("Pupil complexity (schoolweging) for participating schools \n (1 January 2022 - 1 January 2025)") +
+  theme_pubr() + scale_x_continuous(n.breaks = 10) +
+  theme(
+    plot.title = element_text(color=color_text, size=size_title, face="bold", hjust = 0.5),
+    axis.title.x = element_text(size = size_text_axis),
+    axis.title.y = element_text(color=color_text, size=size_title_axis),
+    axis.text.x = element_text(size = size_text_axis),
+    axis.text.y = element_text(size = size_text_axis),
+    legend.title=element_text(size=size_title_axis), 
+    legend.text=element_text(size=size_text_axis),
+    strip.background =  element_blank(),
+    legend.position = "right")
+
+Schoolweging_hist
+
+ggsave("schoolweging_hist_sample.png")
+
+
+# Schoolweging reference
+
+Schoolweging_hist <- ggplot(schoolweging_data, aes(x = schoolweging_z)) + 
+  geom_histogram(binwidth = 0.2, colour = "white", fill = wes_palette("Moonrise1", 1)) + 
+  xlab("Norm scored mean schoolweging") + ylab("Count") +
+  ggtitle("Pupil complexity (schoolweging) for all Dutch schools \n (1 January 2022 - 1 January 2025)") +
+  theme_pubr() + scale_x_continuous(n.breaks = 10) +
+  theme(
+    plot.title = element_text(color=color_text, size=size_title, face="bold", hjust = 0.5),
+    axis.title.x = element_text(size = size_text_axis),
+    axis.title.y = element_text(color=color_text, size=size_title_axis),
+    axis.text.x = element_text(size = size_text_axis),
+    axis.text.y = element_text(size = size_text_axis),
+    legend.title=element_text(size=size_title_axis), 
+    legend.text=element_text(size=size_text_axis),
+    strip.background =  element_blank(),
+    legend.position = "right")
+
+Schoolweging_hist
+
+ggsave("schoolweging_hist_ref_z.png")
+```
+
+# Add graph for SES
+```{r}
+# SES sample
+SES_hist <- ggplot(school_data, aes(x = SES_z)) + 
+  geom_histogram(binwidth = 0.2, colour = "white", fill = wes_palette("FantasticFox1", 1)) + 
+  xlab("Norm scored mean SES-WOA") + ylab("Count") +
+  ggtitle("Socio-economic status for participating schools \n (1 January 2022 - 1 January 2025)") +
+  theme_pubr() + scale_x_continuous(n.breaks = 10) +
+  theme(
+    plot.title = element_text(color=color_text, size=size_title, face="bold", hjust = 0.5),
+    axis.title.x = element_text(size = size_text_axis),
+    axis.title.y = element_text(color=color_text, size=size_title_axis),
+    axis.text.x = element_text(size = size_text_axis),
+    axis.text.y = element_text(size = size_text_axis),
+    legend.title=element_text(size=size_title_axis), 
+    legend.text=element_text(size=size_text_axis),
+    strip.background =  element_blank(),
+    legend.position = "right")
+
+SES_hist
+
+ggsave("SES_hist_sample.png")
+```
+
+
+```{r}
+ggplot(data_pGo, aes(x = condition_type, y = pGo, fill = condition_type)) +
+  facet_grid(cols = vars(session),rows = vars(controllability))+
+  geom_bar(stat = "identity", position = position_dodge(), width = 0.7) +
+  geom_errorbar(aes(ymin = pGo - pGo_se, ymax = pGo + pGo_se), 
+                position = position_dodge(0.7), width = 0.2) +
+  geom_point(data = data_pGo_ind, aes(x = condition_type, y = pGo, group = condition_type),
+             alpha = 0.5, shape=21, fill = "black", inherit.aes = FALSE) +
+  scale_y_continuous(limits = c(0,1))+ scale
+  scale_fill_manual(values = c("Go to Win" = "darkgoldenrod2", "Go to Avoid" = "steelblue3", 
+                                "No Go to Win" = "khaki2", "No Go to Avoid" = "skyblue1")) +
+  ylab("Proportion of go responses") +
+  ggtitle("Probability of go responses (ses*controllability*condition)") +
+  labs(fill = "Condition Type") +
+  theme_pubr() +
+  theme(
+    plot.title = element_text(color=color_text, size=size_title, face="bold", hjust = 0.5),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(color=color_text, size=size_title_axis, face="bold"),
+    axis.text.x = element_text(size = size_text_axis),
+    axis.text.y = element_text(size = size_text_axis),
+    legend.title=element_text(size=size_title_axis), 
+    legend.text=element_text(size=size_text_axis),
+    strip.background =  element_blank(),
+    legend.position = "right")
+```
+
