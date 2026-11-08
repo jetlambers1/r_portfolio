@@ -1,0 +1,495 @@
+---
+title: "JL_BRMS_models_v4"
+author: "Jet Lambers, but mainly Upasana Shah (and Marwan Engels)"
+date: "`r Sys.Date()`"
+params:
+ render_title: "SSRI study models" # default title; can be adjusted to "adaptive" "perseverative" "all"
+ group: "all" # default group; can be "adaptive", "perseverative", "all"
+ computer: "VNC" # default on laptop; can be "VNC" or "laptop"
+ models2run: 7 # default brms model to run
+ family: "bernoulli" # Define what type of model to run: "bernoulli" or "gaussian" 
+output: html_document
+---
+
+This is Jet's adaptation of Upasana's script defining statistical Bayesian models. 
+Update 11/3/2026: This script includes all behavioral measures
+Update 13/2/2026: Models include group
+Update 16/3/2026: Models about differences post-treatment ses from baseline
+Update 18/3/2026: Models include a covariate of baseline performance/behavior
+
+Update 7/5/2026: Models include Trait Anxiety covariate
+
+# Load libraries and data, set contrasts, define directories
+```{r Settings}
+#!/usr/bin/env Rscript
+cat("start\n")
+
+# Load packages:
+cat("load libraries\n")
+library(tidyverse)   # data managing
+library(tidyr)     # data handling
+library(broom.mixed)  # convert brms summary to excel table
+library(dplyr)     # data managing
+library(ggplot2)    # plotting
+library(brms)      # bayesian models
+library(performance)  # check model assumptions
+library(rstan)
+library(openxlsx)   # export to excel
+
+
+# Set directories
+if(.Platform$OS.type == "unix"){dirs = '/project/2424182.03/'} else {dirs = 'P://2424182.03/'}
+data_dir <- file.path(dirs, "analysis/robot_task/jet/Statistics/Dataframes")
+out_dir <- file.path(dirs, "analysis/robot_task/jet/Statistics/Output_other")
+out_dir_plots <- file.path(dirs, "analysis/robot_task/jet/Statistics/Plots")
+out_dir_models <- file.path(dirs, "analysis/robot_task/jet/Statistics/Models")
+out_dir_excel <- file.path(dirs, "analysis/robot_task/jet/Statistics/Excel")
+out_dir_stats <- file.path(dirs, "analysis/robot_task/jet/Statistics/Stats")
+
+# Penalize scientific notation
+cat("load settings\n")
+options(scipen = 20) # no scientific notation
+
+# Setup rstan params
+cat("setup cluster processing\n")
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+set.seed(444) # to make it reproducible every time
+```
+
+# Initialize dataframe
+```{r Initialize dataframe}
+# Load data
+cat("load data\n")
+
+# Depending on JL or US dataframe load different file
+# file_name <- "SSRI_full_brms_data.csv"  # US
+file_name <- "BMRS_input_analysis_df_full.csv"    # JL
+df_task <-read.csv(file.path(data_dir, file_name)) # load in full data set
+
+# Prepare and clean data
+cat("as.factors\n")
+#make categorical vars factor vars
+
+#df_task$subject <- as.factor(df_task$participant)  # change to subject or participant depending on JL or US 
+df_task$action_valence_num <- dplyr::recode(
+  df_task$condition_type,
+  "Go to win" = 4,
+  "Go to avoid loss" = 3,
+  "No go to win" = 2,
+  "No go to avoid loss" = 1
+)
+
+df_task$action_valence_c <- as.numeric(scale(
+  df_task$action_valence_num,
+  center = TRUE,
+  scale = FALSE
+))
+
+df_task$action_valence_c <- as.factor(df_task$action_valence_c)
+df_task$subject <- factor(df_task$subject)
+df_task$session <- factor(df_task$session)
+df_task$miniblock <- factor(df_task$miniblock)
+df_task$controllability_brms <- factor(df_task$controllability_brms, levels = c(1, -1))
+df_task$trial_valence <- factor(df_task$trial_valence, levels = c(1, -1))
+df_task$required_action <- factor(df_task$required_action, levels = c(1, -1))
+df_task$key_response <- factor(df_task$key_response, levels = c(1, 0))
+df_task$prev_action <- factor(df_task$prev_action, levels = c(1, -1))
+df_task$prev_outcome <- factor(df_task$prev_outcome, levels = c(1, -1))
+df_task$group <- factor(df_task$group, levels = c(1, -1))
+df_task$learner <- factor(df_task$learner, levels = c(1, -1))
+
+# Coding of correct response / accuracy depends on JL or US
+df_task$right_response <- factor(df_task$right_response, levels = c(1, 0))
+# df_task$right_response <- df_task$right_response <- factor(df_task$key_resp.corr, levels = c(1, 0)) 
+
+
+# Set contrasts to sum-to-zero coding
+cat("Set contrasts to sum-to-zero coding\n")
+options(contrasts = c("contr.sum", "contr.poly"))
+
+# Reset levels of factors
+df_task$action_valence_c <- relevel(df_task$action_valence_c, ref = "1.5") # go to win
+df_task$session <- relevel(df_task$session, ref = "1") # session 1
+df_task$controllability_brms <- relevel(df_task$controllability_brms, ref = "1") # high control
+df_task$trial_valence <- relevel(df_task$trial_valence, ref = "1") # reward valence
+df_task$required_action <- relevel(df_task$required_action, ref = "1") # Go
+df_task$key_response <- relevel(df_task$key_response, ref = "1") # Go
+df_task$prev_action <- relevel(df_task$prev_action, ref = "1") # Go
+df_task$prev_outcome <- relevel(df_task$prev_outcome, ref = "1") # reward
+df_task$right_response <- relevel(df_task$right_response, ref = "1") # correct
+df_task$group <- relevel(df_task$group, ref = "1")
+ 
+
+# RTs are already log transformed in the dataframe
+
+# Check contrast coding
+contrasts(df_task$session) <- contr.sum(2)
+contrasts(df_task$controllability_brms) <- contr.sum(2)
+contrasts(df_task$trial_valence) <- contr.sum(2)
+contrasts(df_task$required_action) <- contr.sum(2)
+contrasts(df_task$prev_action) <- contr.sum(2)
+contrasts(df_task$prev_outcome) <- contr.sum(2) 
+contrasts(df_task$right_response) <- contr.sum(2)
+contrasts(df_task$key_response) <- contr.sum(2)
+contrasts(df_task$group) <- contr.sum(2)
+contrasts(df_task$action_valence_c) <- contr.sum(4)
+
+
+
+contrasts(df_task$session)
+contrasts(df_task$miniblock)
+contrasts(df_task$controllability_brms)
+contrasts(df_task$trial_valence)
+contrasts(df_task$required_action)
+contrasts(df_task$prev_action)
+contrasts(df_task$prev_outcome)
+contrasts(df_task$right_response)
+contrasts(df_task$key_response)
+contrasts(df_task$group)
+contrasts(df_task$action_valence_c)
+
+df_task$control_block <- factor(df_task$control_block)
+contrasts(df_task$control_block) <- contr.sum(4)
+```
+
+# Split data into different dataframes
+```{r Split data}
+
+df_task <- df_task %>%
+  group_by(group) %>%
+  mutate(
+    stai_t = ifelse(
+      stai_t > mean(stai_t, na.rm = TRUE) + 2 * sd(stai_t, na.rm = TRUE) |
+      stai_t < mean(stai_t, na.rm = TRUE) - 2 * sd(stai_t, na.rm = TRUE),
+      NA_real_,
+      stai_t
+    )
+  ) %>%
+  ungroup()
+
+# session
+df_task_full <- df_task
+df_task_s1 <- filter(df_task, session == "1")
+df_task <- filter(df_task, session == "2")
+
+df_task_block <- df_task %>%
+  group_by(subject, group, control_block) %>%
+  summarise(
+    controllability_brms = first(controllability_brms),
+    reward_rate_s1 = first(reward_rate_s1),
+    control_s1 = first(control_s1),
+    control_rating = first(control_rating),
+    reward_rate_c = mean(reward_rate, na.rm = T),
+    .groups = "drop"
+  ) %>%
+  mutate(reward_rate_c = as.numeric(scale(reward_rate_c)))
+
+# controllability
+df_task_hc <- filter(df_task, controllability_brms == "1") # High Control
+df_task_lc <- filter(df_task, controllability_brms == "-1") # Low Control
+
+df_task_A <- filter(df_task, group == "1") # Group A
+df_task_B <- filter(df_task, group == "-1") # Group B
+
+df_task_go <- filter(df_task, required_action == "1")  # Go action
+df_task_noGo <- filter(df_task, required_action == "-1") # No go action
+
+df_task_pos <- filter(df_task, prev_outcome == "1") # Postive previous outcome
+df_task_neg <- filter(df_task, prev_outcome == "-1") # negative previous outcome
+
+
+# create list of dataframes for models
+dataframes <- list(df_task,          #1 Data per block for subjective control 
+          df_task_block,                         #2 s2 data no rep pGo
+          df_task_s1,                      #3 Go data
+          df_task_s1,                    #4 No-Go data
+          df_task_hc,                      #5 High Control data
+          df_task_lc,                      #6 Low Control data
+          df_task,                         #7 s2 data (for acc) -> correct baseline
+          df_task,                         #8 s2 data -> no ranef rep
+          df_task,                         #9 s2 data no rep acc
+          df_task_go,                      #10 Go data
+          df_task_noGo,                    #11 No go data
+          df_task_hc,                      #12 High control data
+          df_task_lc,                      #13 lc_data
+          df_task,                         #14 s2 data (RT) -> no ranef rep
+          df_task,                         #15 s2 data no rep RT 
+          df_task_s1,                      #16 s1 data for stai
+          df_task,                         #17 s2 data for learner
+          df_task,                      #18 s2 data (for WSLS)
+          df_task_pos,                     #19 s2 data 
+          df_task_neg,                     #20 s2 data
+          df_task_A,                       #21 Group A data
+          df_task_B                        #22 Group B data
+)
+
+str(df_task)
+```
+
+
+# Define models
+```{r Defining models}
+
+model_lists <- c(# pGo
+         "key_response ~ group * controllability_brms * required_action * trial_valence * robot_repetition_z + pGo_s1 + stai_t (1 + controllability_brms * required_action * trial_valence * # robot_repetition_z | subject)" , #1
+         # "control_rating ~ group * controllability_brms * reward_rate_c + control_s1 + reward_rate_s1 + (1 + controllability_brms * reward_rate_c | subject)",  #1
+         
+         "control_rating ~ group * control_block * reward_rate_c + control_s1 + reward_rate_s1 + (1 + control_block * reward_rate_c | subject)" , #2
+         
+         "key_response ~ stai_t * controllability_brms * trial_valence * robot_repetition_z + pGo_s1 + (1 + stai_t * controllability_brms * trial_valence * robot_repetition_z | subject)" , #3
+         
+         "key_response ~ stai_t * controllability_brms * trial_valence * robot_repetition_z + pGo_s1 + (1 + controllability_brms * trial_valence * robot_repetition_z | subject)" , #4
+         
+         "key_response ~ group * required_action * trial_valence * robot_repetition_z + pGo_s1 + (1 + trial_valence * required_action * robot_repetition_z | subject)", #5
+         
+         "key_response ~ group * required_action * trial_valence * robot_repetition_z + pGo_s1 + (1 + trial_valence * required_action * robot_repetition_z | subject)",  #6
+         
+         # Accuracy
+         "right_response ~ group * controllability_brms * required_action * trial_valence * robot_repetition_z + accuracy_s1 + (1 + controllability_brms * required_action * trial_valence * robot_repetition_z | subject)" , #7
+         
+         "right_response ~ group * controllability_brms * required_action * trial_valence * robot_repetition_z + accuracy_s1 + (1 + controllability_brms * required_action * trial_valence | subject)" , #8
+         
+         "right_response ~ group * controllability_brms * required_action * trial_valence + accuracy_s1 + (1 + controllability_brms * required_action * trial_valence | subject)" , #9
+         
+         "right_response ~ group * controllability_brms * trial_valence * robot_repetition_z + accuracy_s1 + (1 + controllability_brms * trial_valence * robot_repetition_z | subject)" , #10
+         
+         "right_response ~ group * controllability_brms * trial_valence * robot_repetition_z + accuracy_s1 + (1 + controllability_brms * trial_valence * robot_repetition_z | subject)" , #11
+         
+         "right_response ~ group * required_action * trial_valence * robot_repetition_z + accuracy_s1 + (1 + trial_valence * required_action * robot_repetition_z | subject)", #12
+         
+         "right_response ~ group * required_action * trial_valence * robot_repetition_z + accuracy_s1 + (1 + trial_valence * required_action * robot_repetition_z | subject)",  #13
+         
+          # Reaction time
+         "RT ~ group * controllability_brms * required_action * trial_valence * robot_repetition_z + RT_s1 + (1 + controllability_brms * required_action * trial_valence | subject)",  #14
+         
+         "RT ~ group * controllability_brms * required_action * trial_valence + RT_s1 + (1 + controllability_brms * required_action * trial_valence | subject)",  #15
+         
+         "stay ~ stai_z * controllability_brms * prev_outcome * robot_repetition_z + stay_s1 + (1 + stai_z * controllability_brms * prev_outcome * prev_action * robot_repetition_z | subject)", #16
+         
+         "stay ~ group * controllability_brms * prev_outcome * prev_action * robot_repetition_z + stay_s1 + stai_t + (1 + controllability_brms * prev_outcome * prev_action * robot_repetition_z | subject)", #17
+         
+         # WSLS incl ses
+         "stay ~ group * controllability_brms * prev_outcome * robot_repetition_z +  stay_s1 + (1 + controllability_brms * prev_outcome | subject)",  #18
+         
+         "stay ~ group * controllability_brms * prev_action * robot_repetition_z +  stay_s1 + (1 + controllability_brms * prev_action * robot_repetition_z | subject)",  #19
+
+         "stay ~ group * controllability_brms * prev_action * robot_repetition_z +  stay_s1 + (1 + controllability_brms * prev_action * robot_repetition_z | subject)",   #20
+         
+         "stay ~ controllability_brms * prev_outcome * prev_action * robot_repetition_z + stay_s1 + (1 + controllability_brms * prev_outcome * prev_action * robot_repetition_z | subject)",  #21
+         
+         "stay ~ controllability_brms * prev_outcome * prev_action * robot_repetition_z + stay_s1 + (1 + controllability_brms * prev_outcome * prev_action * robot_repetition_z | subject)"  #22
+)
+
+model_names <- c("1_s1_stai_pGo_block_action_valence_robot_rep_fullRandom_BRMS", #1
+         "2_stai_pGO_block_action_valence_robot_rep_fullRandom_BRMS",                #2
+         "3_stai_pGO_block_action_valence_robot_rep_fullRandom_BRMS",           #3
+         "4_NoGo_pGo_group_control_valence_robotRep_fullRandom_BRMS",         #4
+         "5_HC_pGo_group_control_valence_robotRep_fullRandom_BRMS",           #5
+         "6_LC_pGo_group_control_valence_robotRep_fullRandom_BRMS",           #6
+         "Update_7_Acc_group_control_action_valence_robotRep_fullRandom_BRMS",#7
+         "8_Acc_group_control_action_valence_robotRep_semiRandom_BRMS",       #8
+         "9_Acc_group_control_action_valence_norepep_full_BRMS",              #9
+         "10_Go_Acc_group_control_action_valence_robotRep_fullRandom_BRMS",   #10
+         "11_NoGo_Acc_group_control_action_valence_robotRep_fullRandom_BRMS", #11
+         "12_HC_Acc_group_control_action_valence_robotRep_fullRandom_BRMS",   #12
+         "13_LC_Acc_group_control_action_valence_robotRep_fullRandom_BRMS",   #13
+         "14_RT_group_control_action_valence_robotRep_semiRandom_BRMS",       #14
+         "15_RT_group_control_action_valence_norep_full_BRMS",                #15
+         "16_s1_WSLS_group_prevOutcome_prevAction_STAI_robotRep_fullRandom_BRMS",    #16
+         "17_stai_sensitivity_WSLS_group_prevOutcome_prevAction_robotRep_fullRandom_BRMS",    #17
+         "18_s1_WSLS_group_block_prevoutcome_robotRep_semirandom",      #18
+         "19_pos_WSLS_group_control_prevAction_robotRep_fullRandom_BRMS",   #19
+         "20_neg_WSLS_group_control_prevAction_robotRep_fullRandom_BRMS",         #20
+         "21_A_WSLS_control_prevOutcome_prevAction_robotRep_fullRandom_BRMS",      #21
+         "22_B_WSLS_control_prevOutcome_robotRep_fullRandom_BRMS"       #22
+)
+
+model_distributions <- c("bernoulli", #1
+               "gaussian",           #2
+               "bernoulli",           #3
+               "bernoulli",           #4
+               "bernoulli",           #5
+               "bernoulli",           #6
+               "bernoulli",           #7
+               "bernoulli",           #8
+               "bernoulli",           #9
+               "bernoulli",           #10
+               "bernoulli",           #11
+               "bernoulli",           #12
+               "bernoulli",           #13
+               "gaussian",            #14
+               "gaussian",            #15
+               "bernoulli",            #16
+               "bernoulli",            #17
+               "bernoulli",           #18
+               "bernoulli",           #19
+               "bernoulli",           #20
+               "bernoulli",           #21
+               "bernoulli"            #22
+)
+```
+
+
+# Run models 
+```{r Running models}
+
+cat("model BRMS\n")
+
+model2run <- params$models2run
+
+model_list <- model_lists[model2run]
+model_name <- model_names[model2run]
+model_distribution <- model_distributions[model2run]
+
+data <- dataframes[[model2run]]
+
+cat("model BRMS\n")
+cat("Running bernoulli BRMS for model ", model_list, ":", model_name, "\n")
+
+#run mixed effect model
+
+model = brms::brm(model_list,
+            data = data,
+            family = model_distribution,
+            warmup = 8000,
+            iter = 10000,
+            #threads = threading(2),
+            chains = 4,
+            cores = 1,
+            save_pars = save_pars(all = TRUE)
+            )
+
+cat("exporting\n")
+# Create output directory if it doesn't exist
+if(!dir.exists(out_dir_stats)){
+ dir.create(out_dir_stats, recursive = TRUE)
+}
+model_output_path <- file.path(out_dir_stats, paste0("BRMS_", model_name, "_", model_distribution, ".rds"))
+print(model_output_path)
+saveRDS(model,file=model_output_path)
+
+
+```
+
+# Model stats
+```{r Model stats}
+
+# Model stats
+model_summary <- summary(model)
+model_posteriors <- posterior_summary(model)
+model_tidy <- tidy(model, conf.int = TRUE)
+
+# If model performance crashes
+model_perf <- tryCatch(
+  {
+    performance::model_performance(model)
+  },
+  error = function(e) {
+    cat("model_performance failed:", conditionMessage(e), "\n")
+    NULL  # return NULL so the rest of the script can check for it
+  }
+)
+
+```
+
+# Save model as excel/csv
+
+```{r Exporting model as csv}
+
+# Save model summary as csv
+excel_workbook <- createWorkbook()
+addWorksheet(excel_workbook, "Model_Summary")
+summary_df <- as.data.frame(model_summary$fixed)
+writeData(excel_workbook, "Model_Summary", summary_df, rowNames = TRUE)
+
+# Add posterior summary
+addWorksheet(excel_workbook, "Posterior_Summary")
+post_df <- as.data.frame(model_posteriors)
+writeData(excel_workbook, "Posterior_Summary", post_df, rowNames = TRUE)
+
+# Add model performance
+if (!is.null(model_perf)) {
+  addWorksheet(excel_workbook, "Model_Performance")
+  perf_df <- as.data.frame(model_perf)
+  writeData(excel_workbook, "Model_Performance", perf_df, rowNames = TRUE)
+} else {
+  cat("Skipping Model_Performance sheet — model_performance returned NULL\n")
+}
+
+# Add tidy summary
+addWorksheet(excel_workbook, "Tidy_Summary")
+writeData(excel_workbook, "Tidy_Summary", model_tidy)
+
+# Save workbook
+model_excel_output_path <- file.path(out_dir_excel, paste0("BRMS_", model_name, "_", model_distribution, ".xlsx"))
+saveWorkbook(excel_workbook, model_excel_output_path, overwrite = TRUE)
+
+cat("saved workbook\n")
+
+```
+
+# Model checks
+
+```{r Model checking}
+
+# Number of iterations actually stored
+posterior::niterations(model)
+# Any divergent transitions or failed chains?
+rstan::check_hmc_diagnostics(model$fit)
+
+# Plot model checks
+bayesplot::pp_check(model, type = "scatter", ndraws = 100)
+
+# Plot posterior predictive checks
+brms::pp_check(model, type = "hist", ndraws = 100)
+brms::pp_check(model, type = "boxplot", ndraws = 100)
+
+# Plot diagnostic plots
+plot(model)
+
+# Plot binomial distribution specific checks
+brms::pp_check(model)
+
+cat("succesfully performed model checks\n")
+
+```
+
+<!-- # Save publication-ready model tables -->
+
+<!-- ```{r Exporting as table} -->
+<!-- library(sjPlot) -->
+<!-- library(sjmisc) -->
+<!-- library(sjlabelled) -->
+<!-- model_table_output_path <- file.path(out_dir, paste0("BRMS_", model_name, "_", model_distribution, ".doc")) -->
+<!-- tab_model(model, file = model_table_output_path) -->
+<!-- ``` -->
+
+# Add model performance to excel (crashes so seperate)
+```{r Model performance}
+# model_performance <- model_performance(model)
+# 
+# # Add model performance
+# addWorksheet(excel_workbook, "Model_Performance")
+# perf_df <- as.data.frame(model_performance)
+# writeData(excel_workbook, "Model_Performance", perf_df, rowNames = TRUE)
+# saveWorkbook(excel_workbook, model_excel_output_path, overwrite = TRUE)
+```
+
+# Stuff currently not used
+```{r}
+        # RTs
+        # "RT ~ group  * controllability_brms * required_action * trial_valence + RT_s1 + (1 + group * controllability_brms * required_action * trial_valence | subject)", #9
+
+         #"RT ~ group  * controllability_brms * required_action * trial_valence * robot_repetition_z + RT_s1 + (1 + group * controllability_brms * required_action * trial_valence | subject)",  #10
+
+         # High control
+         #"RT ~ group  * required_action * trial_valence * robot_repetition_z + RT_s1 + (1 + group  * required_action * trial_valence | subject)",  #11
+         
+         # Low control
+         #"RT ~ session * group  * required_action * trial_valence * robot_repetition_z + RT_s1 + (1 + group  * required_action * trial_valence | subject)",  #12
+
+
+# "key_response ~ group * controllability_brms * trial_valence * robot_repetition_z + pGo_s1 + (1 + group * controllability_brms * trial_valence| subject)"
+```
+

@@ -1,0 +1,509 @@
+---
+title: "Model checks"
+author: "Jet Lambers"
+date: '`r Sys.Date()`'
+output: html_document
+---
+
+# Load libraries
+```{r loading libraries}
+# Load packages:
+cat("load libraries\n")
+library(tidyverse)      # data managing
+library(tidyr)          
+library(broom.mixed)    
+library(dplyr) 
+library(openxlsx)       # export to excel
+
+library(ggplot2)        # plotting 
+library(wesanderson)
+library(ggpubr)
+library(effects)        # effects for plotting
+library(interactions)
+library(emmeans)
+library(sjPlot)         # model tables
+library(sjmisc)
+library(sjlabelled)
+
+
+library(brms)           # bayesian models
+library(performance)    # check model assumptions
+library(rstan)
+```
+
+# Upasana's settings
+```{r}
+# Set directories
+if(.Platform$OS.type == "unix"){dirs = '/project/2424182.03/'} else {dirs = 'P://2424182.03/'}
+data_dir <- file.path(dirs, "analysis/robot_task/jet/Statistics/Dataframes")
+out_dir <- file.path(dirs, "analysis/robot_task/jet/Statistics/Output_other")
+out_dir_plots <- file.path(dirs, "analysis/robot_task/jet/Statistics/Plots")
+out_dir_models <- file.path(dirs, "analysis/robot_task/jet/Statistics/Models")
+out_dir_excel <- file.path(dirs, "analysis/robot_task/jet/Statistics/Excel")
+out_dir_stats <- file.path(dirs, "analysis/robot_task/jet/Statistics/Stats")
+
+# Penalize scientific notation
+cat("load settings\n")
+options(scipen = 20) # no scientific notation
+
+# Setup rstan params
+cat("setup cluster processing\n")
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+set.seed(444) # to make it reproducible every time
+```
+
+
+# pGo data
+```{r}
+# load data
+pgo_rds_full <- read_rds(file.path(out_dir_stats, "BRMS_pGo_group_control_action_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+pgo_rds_full <- add_criterion(pgo_rds_full, "loo", cores = 1)
+pgo_rds_full <- add_criterion(pgo_rds_full, "waic", cores = 1)
+pgo_rds_semi <- read_rds(file.path(out_dir_stats, "BRMS_1_pGo_group_control_action_valence_robotRep_semiRandom_BRMS_bernoulli.rds"))
+pgo_rds_semi <- add_criterion(pgo_rds_semi, "loo", cores = 1)
+pgo_rds_semi <- add_criterion(pgo_rds_semi, "waic", cores = 1)
+pgo_rds_norep <- read_rds(file.path(out_dir_stats, "BRMS_2_pGo_group_control_action_valence_norep_full_BRMS_bernoulli.rds"))
+pgo_rds_norep <- add_criterion(pgo_rds_norep, "loo", cores = 1)
+pgo_rds_norep <- add_criterion(pgo_rds_norep, "waic", cores = 1)
+
+loo_compare(pgo_rds_full, pgo_rds_semi, pgo_rds_norep, criterion = "loo")
+loo_compare(pgo_rds_full, pgo_rds_semi, pgo_rds_norep, criterion = "waic")
+
+Acc_rds_full <- read_rds(file.path(out_dir_stats, "BRMS_Update_7_Acc_group_control_action_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+Acc_rds_full <- add_criterion(Acc_rds_full, "loo", cores = 1)
+Acc_rds_full <- add_criterion(Acc_rds_full, "waic", cores = 1)
+Acc_rds_semi <- read_rds(file.path(out_dir_stats, "BRMS_8_Acc_group_control_action_valence_robotRep_semiRandom_BRMS_bernoulli.rds"))
+Acc_rds_semi <- add_criterion(Acc_rds_semi, "loo", cores = 1)
+Acc_rds_semi <- add_criterion(Acc_rds_semi, "waic", cores = 1)
+Acc_rds_norep <- read_rds(file.path(out_dir_stats, "BRMS_9_Acc_group_control_action_valence_norepep_full_BRMS_bernoulli.rds"))
+Acc_rds_norep <- add_criterion(Acc_rds_norep, "loo", cores = 1)
+Acc_rds_norep <- add_criterion(Acc_rds_norep, "waic", cores = 1)
+
+loo_compare(Acc_rds_full, Acc_rds_semi, Acc_rds_norep, criterion = "loo")
+loo_compare(Acc_rds_full, Acc_rds_semi, Acc_rds_norep, criterion = "waic")
+
+RT_rds_full <- read_rds(file.path(out_dir_stats, "BRMS_RT_group_control_action_valence_robotRep_fullRandom_BRMS_gaussian.rds"))
+RT_rds_full <- add_criterion(RT_rds_full, "loo", cores = 1)
+RT_rds_full <- add_criterion(RT_rds_full, "waic", cores = 1)
+RT_rds_semi <- read_rds(file.path(out_dir_stats, "BRMS_14_RT_group_control_action_valence_robotRep_semiRandom_BRMS_gaussian.rds"))
+RT_rds_semi <- add_criterion(RT_rds_semi, "loo", cores = 1)
+RT_rds_semi <- add_criterion(RT_rds_semi, "waic", cores = 1)
+RT_rds_norep <- read_rds(file.path(out_dir_stats, "BRMS_15_RT_group_control_action_valence_norep_full_BRMS_gaussian.rds"))
+RT_rds_norep <- add_criterion(RT_rds_norep, "loo", cores = 1)
+RT_rds_norep <- add_criterion(RT_rds_norep, "waic", cores = 1)
+
+loo_compare(RT_rds_full, RT_rds_semi, RT_rds_norep, criterion = "loo")
+loo_compare(RT_rds_full, RT_rds_semi, RT_rds_norep, criterion = "waic")
+
+
+```
+
+
+# WSLS
+```{r}
+wsls_rds_full <- read_rds(file.path(out_dir_stats, "BRMS_12_WSLS_group_control_prevOutcome_fullRandom_BRMS_bernoulli.rds"))
+wsls_rds_full <- add_criterion(wsls_rds_full, "loo", cores = 1)
+wsls_rds_full <- add_criterion(wsls_rds_full, "waic", cores = 1)
+wsls_rds_semi <- read_rds(file.path(out_dir_stats, "BRMS_18_WSLS_group_block_prevoutcome_robotRep_semirandom_bernoulli.rds"))
+wsls_rds_semi <- add_criterion(wsls_rds_semi, "loo", cores = 1)
+wsls_rds_semi <- add_criterion(wsls_rds_semi, "waic", cores = 1)
+wsls_rds_norep <- read_rds(file.path(out_dir_stats, "BRMS_20_WSLS_group_block_prevoutcome_noRep_full_BRMS_bernoulli.rds"))
+wsls_rds_norep <- add_criterion(wsls_rds_norep, "loo", cores = 1)
+wsls_rds_norep <- add_criterion(wsls_rds_norep, "waic", cores = 1)
+wsls_rds_action <-read_rds(file.path(out_dir_stats, "BRMS_19_prevAction_WSLS_group_block_control_robotRep_fullRandom_BRMS_bernoulli.rds"))
+wsls_rds_action <- add_criterion(wsls_rds_action, "loo", cores = 1)
+wsls_rds_action <- add_criterion(wsls_rds_action, "waic", cores = 1)
+
+loo_compare(wsls_rds_full, wsls_rds_semi, wsls_rds_norep, wsls_rds_action, criterion = "loo")
+loo_compare(wsls_rds_full, wsls_rds_semi, wsls_rds_norep, wsls_rds_action, criterion = "waic")
+```
+
+# Bayes R2
+```{r}
+control_rds <- read_rds(file.path(out_dir_stats, "BRMS_rating_control_reward_fullRandom_BRMS_gaussian.rds"))
+bayes_R2(pgo_rds_full)
+bayes_R2(Acc_rds_full)
+bayes_R2(RT_rds_full)
+bayes_R2(wsls_rds_full)
+bayes_R2(control_rds)
+```
+
+# Emmeans 
+```{r}
+pgo_rds_go <- read_rds(file.path(out_dir_stats, "BRMS_3_Go_pGo_group_control_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+pgo_rds_nogo <- read_rds(file.path(out_dir_stats, "BRMS_4_NoGo_pGo_group_control_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+pgo_rds_hc <- read_rds(file.path(out_dir_stats, "BRMS_5_HC_pGo_group_control_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+pgo_rds_lc <- read_rds(file.path(out_dir_stats, "BRMS_6_LC_pGo_group_control_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+```
+
+
+```{r}
+# emmeans for three way interaction control * action * rep
+emtrends_go <- emtrends(pgo_rds_go, "controllability_brms", var = "robot_repetition_z", type = "response")
+cat("Trends for the slope of go-responses over reps by controllability for go-action robots\n\n")
+emtrends_go
+cat("\nPairwise comparisons for pgo over reps high control - low-control for go-robots\n\n")
+pairs(emtrends_go)
+emtrends_nogo <- emtrends(pgo_rds_nogo, "controllability_brms", var = "robot_repetition_z", type = "response")
+cat("\nTrends for the slope of go-responses over reps by controllability for no go-action robots\n\n")
+emtrends_nogo
+cat("Pairwise comparisons for pgo over reps high control - low-control for no go-robots\n\n")
+pairs(emtrends_nogo)
+
+emmeans_go <- emmeans(pgo_rds_go, "controllability_brms", type = "response")
+cat("\npGo for high and low control for go-robots\n\n")
+emmeans_go
+cat("\nPairwise comparisons for pgo for high control - low-control for go-robots\n\n")
+pairs(emmeans_go)
+
+emmeans_nogo <- emmeans(pgo_rds_nogo, "controllability_brms", type = "response")
+cat("\npGo for high and low control for no go-robots\n\n")
+emmeans_nogo
+cat("\nPairwise comparisons for pgo for high control - low-control for no go-robots\n\n")
+pairs(emmeans_nogo)
+
+
+emtrend_go_rep <- emtrends(pgo_rds_go, ~ 1, var = "robot_repetition_z", type = "response")
+emtrend_go_rep
+
+emtrend_nogo_rep <- emtrends(pgo_rds_nogo, ~ 1, var = "robot_repetition_z", type = "response")
+emtrend_nogo_rep
+
+```
+
+```{r}
+emtrends_hc <- emtrends(pgo_rds_hc, "required_action", var = "robot_repetition_z", type = "response")
+cat("Trends for the slope of go-responses over reps by required action within high control blocks\n\n")
+tbl <- as.data.frame(emtrends_hc)
+knitr::kable(tbl, digits = 3)
+cat("\nPairwise comparisons for the slope of go-responses over reps for go - no go action within high control blocks\n\n")
+tbl1 <- as.data.frame(pairs(emtrends_hc))
+knitr::kable(tbl1, digits = 3)
+
+emmeans_hc <- emmeans(pgo_rds_hc, "required_action", type = "response")
+cat("\npGo for go and no-go robots within high conbtrol blocks \n\n")
+tbl2 <- as.data.frame(emmeans_hc)
+knitr::kable(tbl2, digits = 3)
+cat("\nPairwise comparisons for pgo for go -no-go robots withing high control blocks\n\n")
+tbl3 <- as.data.frame(pairs(emmeans_hc))
+knitr::kable(tbl3, digits = 3)
+
+emtrends_lc <- emtrends(pgo_rds_lc, "required_action", var = "robot_repetition_z", type = "response")
+cat("Trends for the slope of go-responses over reps by required action within high control blocks\n\n")
+tbl4 <- as.data.frame(emtrends_lc)
+knitr::kable(tbl4, digits = 3)
+cat("\nPairwise comparisons for the slope of go-responses over reps for go - no go action within high control blocks\n\n")
+tbl5 <- as.data.frame(pairs(emtrends_lc))
+knitr::kable(tbl5, digits = 3)
+
+emmeans_lc <- emmeans(pgo_rds_lc, "required_action", type = "response")
+cat("\npGo for go and no-go robots within high conbtrol blocks \n\n")
+tbl6 <- as.data.frame(emmeans_lc)
+knitr::kable(tbl6, digits = 3)
+
+cat("\nPairwise comparisons for pgo for go -no-go robots withing high control blocks\n\n")
+tbl7 <- as.data.frame(pairs(emmeans_lc))
+knitr::kable(tbl7, digits = 3)
+```
+
+
+# Accuracy data cat("\nPairwise comparisons for the slope of of accuracy for high control blocks\n\n")
+tbl1 <- as.data.frame(pairs(emtrends(acc_rds_full, "controllability_brms", var = "robot_repetition_z")))
+```{r}
+acc_rds_full <- read_rds(file.path(out_dir_stats, "BRMS_Update_7_Acc_group_control_action_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+acc_rds_go <- read_rds(file.path(out_dir_stats, "BRMS_10_Go_Acc_group_control_action_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+acc_rds_nogo <- read_rds(file.path(out_dir_stats, "BRMS_11_NoGo_Acc_group_control_action_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+acc_rds_hc <- read_rds(file.path(out_dir_stats, "BRMS_12_HC_Acc_group_control_action_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+acc_rds_lc <- read_rds(file.path(out_dir_stats, "BRMS_13_LC_Acc_group_control_action_valence_robotRep_fullRandom_BRMS_bernoulli.rds"))
+
+```
+
+```{r}
+emtrends_hc <- emtrends(acc_rds_hc, ~1, var = "robot_repetition_z")
+cat("Trends for the slope of accuracy over reps for high control blocks\n\n")
+tbl <- as.data.frame(emtrends_hc)
+knitr::kable(tbl, digits = 3)
+cat("\nPairwise comparisons for the slope of of accuracy for high control blocks\n\n")
+tbl1 <- as.data.frame(pairs(emtrends(acc_rds_full, "controllability_brms", var = "robot_repetition_z")))
+knitr::kable(tbl1, digits = 3)
+
+emtrends_lc <- emtrends(acc_rds_lc, ~1, var = "robot_repetition_z")
+cat("Trends for the slope of go-responses over reps by required action within high control blocks\n\n")
+tbl4 <- as.data.frame(emtrends_lc)
+knitr::kable(tbl4, digits = 3)
+cat("\nPairwise comparisons for the slope of go-responses over reps for go - no go action within high control blocks\n\n")
+tbl5 <- as.data.frame(pairs(emtrends_lc))
+knitr::kable(tbl5, digits = 3)
+
+emmeans_go <- emmeans(acc_rds_go, "trial_valence", type = "response")
+cat("\npGo for reward versus loss for go-robots\n\n")
+tbl5 <- as.data.frame(emmeans_go)
+knitr::kable(tbl5, digits = 3)
+cat("\nPairwise comparisons for pgo for reward versus loss for go-robots\n\n")
+tbl6 <- as.data.frame(pairs(emmeans_go))
+knitr::kable(tbl6, digits = 3)
+
+emmeans_nogo <- emmeans(acc_rds_nogo, "trial_valence", type = "response")
+cat("\npGo for reward versus loss for no go-robots\n\n")
+tbl7 <- as.data.frame(emmeans_nogo)
+knitr::kable(tbl7, digits = 3)
+cat("\nPairwise comparisons for pgo for reward versus loss for no go-robots\n\n")
+tbl8 <- as.data.frame(pairs(emmeans_nogo))
+knitr::kable(tbl8, digits = 3)
+
+```
+
+# Reaction time data
+```{r}
+rt_rds_full <- read_rds(file.path(out_dir_stats,"BRMS_RT_group_control_action_valence_robotRep_fullRandom_BRMS_gaussian.rds"))
+emtrends_RT <- emtrends(rt_rds_full, "controllability_brms", var = "robot_repetition_z")
+tbl <- as.data.frame(emtrends_RT)
+knitr::kable(tbl, digits = 3)
+
+tbl2 <- as.data.frame(pairs(emtrends_RT))
+knitr::kable(tbl2, digits = 3)
+
+```
+
+# Win stay lose switch
+```{r}
+wsls_rds_full <- read_rds(file.path(out_dir_stats, "BRMS_19_prevAction_WSLS_group_block_control_robotRep_fullRandom_BRMS_bernoulli.rds"))
+wsls_rds_pos <- read_rds(file.path(out_dir_stats, "BRMS_19_pos_WSLS_group_control_prevAction_robotRep_fullRandom_BRMS_bernoulli.rds"))
+wsls_rds_neg <- read_rds(file.path(out_dir_stats, "BRMS_20_neg_WSLS_group_control_prevAction_robotRep_fullRandom_BRMS_bernoulli.rds"))
+wsls_rds_A <- read_rds(file.path(out_dir_stats, "BRMS_21_A_WSLS_control_prevOutcome_prevAction_robotRep_fullRandom_BRMS_bernoulli.rds"))
+wsls_rds_B <- read_rds(file.path(out_dir_stats, "BRMS_22_B_WSLS_control_prevOutcome_robotRep_fullRandom_BRMS_bernoulli.rds"))
+wsls_rds_hc <- read_rds(file.path(out_dir_stats, "BRMS_16_HC_WSLS_group_prevOutcome_prevAction_robotRep_fullRandom_BRMS_bernoulli.rds"))
+wsls_rds_lc <- read_rds(file.path(out_dir_stats, "BRMS_17_LC_WSLS_group_prevOutcome_prevAction_robotRep_fullRandom_BRMS_bernoulli.rds"))
+
+
+```
+
+
+```{r}
+library(forcats)
+ce_wsls <- conditional_effects(
+  wsls_rds_action,
+  effects = "controllability_brms:prev_outcome",
+  conditions = data.frame(group = c("1", "-1")),
+)
+ce_df <- ce_wsls[[1]]
+ce_df$block <- recode_factor(ce_df$controllability_brms, "1" = "C+/V-", "-1" = "C-/V+")
+ce_df$group <- recode_factor(ce_df$group, "1" = "Placebo", "-1" = "Escitalopram")
+fct_relevel(ce_df$group, "Escitalopram", "Placebo")
+ce_df$prev_outcome <- recode_factor(ce_df$prev_outcome, "1" = "Positive", "-1" = "Negative")
+ce_df$block <- fct_relevel(ce_df$block, "C+V-", "C-V+")
+ce_wsls_plot <- ggplot(ce_df, aes(x = block,
+                  y = estimate__,
+                  group = prev_outcome,
+                  color = prev_outcome)) +
+  facet_grid(cols = vars(group)) +
+  geom_point(size = 6) +
+  geom_line(linewidth = 1.5) +
+  geom_errorbar(aes(ymin = lower__, ymax = upper__),
+    width = 0.2
+  ) +
+  #scale_y_continuous(limits = c(0.50)) +
+  scale_fill_manual(values = wes_palette("GrandBudapest1", n = 2), guide = "none") +
+  scale_color_manual(values= wes_palette("GrandBudapest1", n = 2)) +
+  ylab("Probability of repeating response p(Stay)") + xlab("Block type") +
+  ggtitle("Predicted p(Stay) a response by group, block type and previous outcome") +
+  labs(color = "Previous outcome") +
+  theme_pubr() +
+  theme(
+    plot.title = element_text(color = color_text, size = size_title, face = "bold", hjust = 0.5),
+    axis.title.x = element_text(color = color_text, size = size_title, face = "bold", hjust = 0.5),
+    axis.title.y = element_text(color = color_text, size = size_title_axis, face = "bold"),
+    axis.text.x = element_text(size = 15),
+    axis.text.y = element_text(size = size_text_axis),
+    legend.title = element_text(size = size_title_axis),
+    legend.text = element_text(size = size_text_axis),
+    strip.background = element_blank(),
+    strip.text = element_text(size = 14),
+    legend.position = "right"
+  ) 
+ce_wsls_plot  
+ggsave(filename = file.path(out_dir_plots, "ModelPred_WSLS_group_control_outcome.pdf"), ce_wsls_plot, width=15, height=10, dpi = "retina")
+```
+
+```{r}
+library(colorspace)
+ce_wsls_2 <- conditional_effects(
+  wsls_rds_action,
+  effects = "robot_repetition_z:prev_outcome",
+  conditions = data.frame(
+    group = c("1", "-1")  # replace with your actual levels
+  )
+)
+ce_df <- ce_wsls_2[[1]]
+ce_df$group <- recode_factor(ce_df$group, "1" = "Placebo", "-1" = "Escitalopram")
+ce_df$group <- fct_relevel(ce_df$group, "Escitalopram", "Placebo")
+ce_df$prev_outcome <- recode_factor(ce_df$prev_outcome, "1" = "Positive", "-1" = "Negative")
+ce_df$prev_outcome <- fct_relevel(ce_df$prev_outcome, "Positive", "Negative")
+
+ce_plot2 <- ggplot(ce_df, aes(x = robot_repetition_z,
+                  y = estimate__,
+                  color = group)) +
+  # facet_grid(cols = vars(group)) +
+  geom_hline(yintercept=0.5, linetype="dashed", color = "grey", alpha = 0.85, linewidth=1) +
+  geom_ribbon(aes(ymin = lower__, ymax = upper__,
+                fill = group,
+                group = interaction(group, prev_outcome)),
+            alpha = 0.2, color = NA) +
+geom_line(aes(linetype = prev_outcome,
+              group = interaction(group, prev_outcome)),
+          linewidth = 1) +
+  scale_fill_manual(values = wes_palette("Royal2", n = 2)) +
+  scale_color_manual(values= darken(wes_palette("Royal2", n = 2), amount = 0.5), guide = "none")+
+  scale_linetype_manual(values = c("solid", "twodash")) +
+  scale_x_continuous(breaks = round(seq(2, 10, by = 1),1)) +
+  ylab("Probability of repeating a response (p(Stay))") +
+  ggtitle("Predicted p(Stay) over repetitions by group and previous outcome") +
+  labs(fill = "Group", linetype = "Previous outcome") + xlab("Robot repetition")+
+  theme_pubr() +
+  theme(
+    plot.title = element_text(color = color_text, size = size_title, face = "bold", hjust = 0.5),
+    axis.title.x = element_text(color = color_text, size = size_title_axis, face = "bold"),
+    axis.title.y = element_text(color = color_text, size = size_title_axis, face = "bold"),
+    axis.text.x = element_text(size = size_text_axis),
+    axis.text.y = element_text(size = size_text_axis),
+    legend.title = element_text(size = size_title_axis),
+    legend.text = element_text(size = size_text_axis),
+    strip.background = element_blank(),
+    strip.text = element_text(size = 14),
+    legend.position = "right"
+  )
+ce_plot2
+ggsave(filename = file.path(out_dir_plots, "ce_plot_WSLS_group_prevOutcome_rep.pdf"), ce_plot2, width=15, height=10, dpi = "retina")
+```
+
+
+```{r}
+emtrends_prev_rep <- emtrends(wsls_rds_full, "prev_outcome", "robot_repetition_z")
+tbl <- as.data.frame(emtrends_prev_rep)
+knitr::kable(tbl, digits = 3)
+tbl_pair <- as.data.frame(pairs(emtrends_prev_rep))
+knitr::kable(tbl_pair, digits = 3)
+
+
+emmeans_hc <- emmeans(wsls_rds_hc, "prev_outcome", type = "response")
+tbl_hc_m <- as.data.frame(emmeans_hc)
+knitr::kable(tbl_hc_m, digits = 3)
+tbl_hc_p <- as.data.frame(pairs(emmeans_hc))
+knitr::kable(tbl_hc_p, digits = 3)
+
+emmeans_lc <- emmeans(wsls_rds_lc, "prev_outcome", type = "response")
+tbl_lc_m <- as.data.frame(emmeans_lc)
+knitr::kable(tbl_lc_m, digits = 3)
+tbl_lc_p <- as.data.frame(pairs(emmeans_lc))
+knitr::kable(tbl_lc_p, digits = 3)
+
+emmeans_pos <- emmeans(wsls_rds_pos, "controllability_brms", type = "response")
+tbl_pos <- as.data.frame(emmeans_pos)
+knitr::kable(tbl_pos, digits = 3)
+tbl_pos_p <- as.data.frame(pairs(emmeans_pos))
+knitr::kable(tbl_pos_p, digits = 3)
+
+emmeans_neg <- emmeans(wsls_rds_neg, "controllability_brms", type = "response")
+tbl_neg <- as.data.frame(emmeans_neg)
+knitr::kable(tbl_neg, digits = 3)
+tbl_neg_p <- as.data.frame(pairs(emmeans_neg))
+knitr::kable(tbl_neg_p, digits = 3)
+
+emtrends_A <- emtrends(wsls_rds_A, "prev_outcome",var = "robot_repetition_z")
+tbl_A <- as.data.frame(emtrends_A)
+tbl_A_p <- as.data.frame(pairs(emtrends_A))
+knitr::kable(tbl_A, digits = 3)
+knitr::kable(tbl_A_p, digits = 3)
+
+emmeans_A <- emmeans(wsls_rds_A, "controllability_brms", by = "prev_outcome", type = "response")
+tbl_A_m <- as.data.frame(emmeans_A)
+tbl_A_m_p <- as.data.frame(pairs(emmeans_A))
+knitr::kable(tbl_A_m, digits = 3)
+knitr::kable(tbl_A_m_p, digits = 3)
+
+# emtrends_B <- emtrends(wsls_rds_B, "prev_outcome", var = "robot_repetition_z")
+# tbl_B <- as.data.frame(emtrends_B)
+# tbl_B_p <- as.data.frame(pairs(emtrends_B))
+# knitr::kable(tbl_B, digits = 3)
+# knitr::kable(tbl_B_p, digits = 3)
+
+emmeans_B <- emmeans(wsls_rds_B, "controllability_brms", by = "prev_outcome", type = "response")
+tbl_B_m <- as.data.frame(emmeans_B)
+tbl_B_m_p <- as.data.frame(pairs(emmeans_B))
+knitr::kable(tbl_B_m, digits = 3)
+knitr::kable(tbl_B_m_p, digits = 3)
+
+emmeans_action <- emmeans(wsls_rds_full, "prev_action", by = "group", type = "response")
+tbl_full2 <- as.data.frame(emmeans_action)
+tbl_full2_p <- as.data.frame(pairs(emmeans_action))
+knitr::kable(tbl_full2, digits = 3)
+knitr::kable(tbl_full2_p, digits = 3)
+```
+
+# Action bias?
+```{r}
+conditional_effects(wsls_rds_action, effects = "prev_action:group")
+emmeans(wsls_rds_action, pairwise ~ prev_action * group)
+emm <- emmeans(wsls_rds_action, ~ prev_action | group, type = "response")
+contrast(emm, method = "pairwise")
+
+ce_wsls <- conditional_effects(
+  wsls_rds_action,
+  effects = "group:prev_action",
+  conditions = data.frame(group = c("1", "-1")),
+)
+ce_df <- ce_wsls[[1]]
+ce_df$group <- recode_factor(ce_df$group, "1" = "Placebo", "-1" = "Escitalopram")
+ce_df$group <- fct_relevel(ce_df$group, "Escitalopram", "Placebo")
+ce_df$prev_action <- recode_factor(ce_df$prev_action, "1" = "Go", "-1" = "No go")
+ce_df$prev_action <- fct_relevel(ce_df$prev_action, "Go", "No go")
+ce_wsls_plot <- ggplot(ce_df, aes(x = prev_action,
+                  y = estimate__,
+                  group = group,
+                  color = group)) +
+  #facet_grid(cols = vars(group)) +
+  geom_point(size = 6, position = position_dodge(width = 0.7)) +
+  geom_line(linewidth = 1.5, position = position_dodge(width = 0.7)) +
+  geom_errorbar(aes(ymin = lower__, ymax = upper__),
+    position = position_dodge(width = 0.7),
+    width = 0.2
+  ) +
+  #scale_y_continuous(limits = c(0.50)) +
+  scale_fill_manual(values = wes_palette("Royal2", n = 2), guide = "none") +
+  scale_color_manual(values= wes_palette("Royal2", n = 2)) +
+  ylab("Probability of repeating response p(Stay)") + xlab("Previous action") +
+  ggtitle("Predicted p(Stay) by previous action per group") +
+  labs(color = "Group") +
+  theme_pubr() +
+  theme(
+    plot.title = element_text(color = color_text, size = size_title, face = "bold", hjust = 0.5),
+    axis.title.x = element_text(color = color_text, size = size_title, face = "bold", hjust = 0.5),
+    axis.title.y = element_text(color = color_text, size = size_title_axis, face = "bold"),
+    axis.text.x = element_text(size = 15),
+    axis.text.y = element_text(size = size_text_axis),
+    legend.title = element_text(size = size_title_axis),
+    legend.text = element_text(size = size_text_axis),
+    strip.background = element_blank(),
+    strip.text = element_text(size = 14),
+    legend.position = "right"
+  ) 
+ce_wsls_plot  
+ggsave(filename = file.path(out_dir_plots, "modelPred_wsls_group_prevAction.pdf"), ce_wsls_plot, width=15, height=10, dpi = "retina")
+```
+
+# Stai-model
+```{r}
+rds_stai <- read_rds(file.path(out_dir_stats, "BRMS_18_STAI_s1_WSLS_control_prevOutcome_robotRep_fullrandom_BRMS_bernoulli.rds"))
+
+emtrends_prev_stai <- emtrends(
+  rds_stai,
+  specs = ~ prev_outcome,
+  var = "stai_z"
+)
+tbl <- as.data.frame(emtrends_prev_stai)
+knitr::kable(tbl, digits = 3)
+tbl_pair <- as.data.frame(pairs(emtrends_prev_stai))
+knitr::kable(tbl_pair, digits = 3)
+```
+
